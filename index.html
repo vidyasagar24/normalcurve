@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Normal Curve from Excel Marks</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+    }
+    #chart-container {
+      width: 90%;
+      max-width: 900px;
+      margin: 2rem auto;
+    }
+    input[type="file"] {
+      display: block;
+      margin: 1rem auto;
+    }
+  </style>
+</head>
+<body>
+
+  <h3 style="text-align:center;">Upload Excel File with "Marks" Column</h3>
+  <input type="file" id="upload" accept=".xlsx, .xls" />
+  <div id="chart-container">
+    <canvas id="chart"></canvas>
+  </div>
+
+  <script>
+    function normalPDF(x, mean, std) {
+      return (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * ((x - mean) / std) ** 2);
+    }
+
+    document.getElementById('upload').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        const header = rows[0];
+        const marksIndex = header.indexOf("Marks");
+        if (marksIndex === -1) {
+          alert("Excel file must contain a column named 'Marks'.");
+          return;
+        }
+
+        const marks = rows.slice(1).map(row => parseFloat(row[marksIndex])).filter(v => !isNaN(v));
+        const mean = marks.reduce((a, b) => a + b, 0) / marks.length;
+        const variance = marks.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / marks.length;
+        const stdDev = Math.sqrt(variance);
+
+        const xMin = 0;
+        const xMax = 50;
+        const xValues = Array.from({ length: 501 }, (_, i) => xMin + i * ((xMax - xMin) / 500));
+        const yValues = xValues.map(x => normalPDF(x, mean, stdDev));
+
+        const ctx = document.getElementById('chart').getContext('2d');
+        if (window.chartInstance) window.chartInstance.destroy();
+
+        window.chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: xValues,
+            datasets: [{
+              label: 'Normal Curve',
+              data: yValues,
+              borderColor: 'blue',
+              fill: false,
+              tension: 0.4
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: `Normal Distribution Curve | Mean: ${mean.toFixed(2)}, Variance: ${variance.toFixed(2)}`
+              },
+              annotation: {
+                annotations: {
+                  meanLine: {
+                    type: 'line',
+                    xMin: mean,
+                    xMax: mean,
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    label: {
+                      content: `Mean = ${mean.toFixed(2)}`,
+                      enabled: true,
+                      position: 'start'
+                    }
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear',
+                min: 0,
+                max: 50,
+                title: {
+                  display: true,
+                  text: 'Marks'
+                },
+                ticks: {
+                  stepSize: 10,
+                  callback: val => Number.isInteger(val) ? val : null
+                }
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: 'Probability Density'
+                },
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  </script>o
+
+</body>
+</html>
